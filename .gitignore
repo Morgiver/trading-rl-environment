@@ -1,4 +1,8 @@
 candle_CME_NQ.db
+
+# Claude Code settings
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]
