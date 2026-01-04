@@ -9,10 +9,11 @@ from gymnasium import spaces
 
 from trading_frame import Candle, InsufficientDataError
 from trading_asset_view import AssetView
-from trading_simulator import TradingSimulator, OrderType, OrderSide, PnLMode
+from trading_simulator import TradingSimulator, PnLMode
 
 from .reward_strategy import RewardStrategy, SimplePnLReward
 from .observation_builder import ObservationBuilder
+from .action_strategy import ActionStrategy, SimpleActionStrategy
 from .enums import DataMode
 
 
@@ -32,6 +33,7 @@ class TradingEnv(gym.Env):
         timeframes: List[str],
         initial_balance: float = 10000.0,
         reward_strategy: Optional[RewardStrategy] = None,
+        action_strategy: Optional[ActionStrategy] = None,
         max_periods: int = 100,
         max_steps: int = 1000,
         trade_quantity: float = 1.0,
@@ -50,9 +52,10 @@ class TradingEnv(gym.Env):
             timeframes: List of timeframe strings (e.g., ["1T", "5T", "1H"])
             initial_balance: Starting balance for simulator
             reward_strategy: Custom reward strategy (defaults to SimplePnLReward)
+            action_strategy: Custom action strategy (defaults to SimpleActionStrategy)
             max_periods: Maximum periods to keep per timeframe
             max_steps: Maximum steps per episode
-            trade_quantity: Fixed quantity to trade per action
+            trade_quantity: Fixed quantity to trade per action (used by default SimpleActionStrategy)
             pnl_mode: PnL calculation mode
             fee_rate: Trading fee rate (e.g., 0.001 = 0.1%)
             data_mode: LINEAR (continuous traversal) or SHUFFLE (random days)
@@ -74,6 +77,9 @@ class TradingEnv(gym.Env):
 
         # Initialize reward strategy
         self.reward_strategy = reward_strategy or SimplePnLReward()
+
+        # Initialize action strategy
+        self.action_strategy = action_strategy or SimpleActionStrategy(trade_quantity=trade_quantity)
 
         # Initialize AssetView for multi-timeframe data
         self.asset_view = AssetView(
@@ -104,8 +110,8 @@ class TradingEnv(gym.Env):
             max_position_size=trade_quantity * 10  # Allow up to 10x accumulation
         )
 
-        # Action space: 0=HOLD, 1=BUY, 2=SELL
-        self.action_space = spaces.Discrete(3)
+        # Action space: dynamically defined by action_strategy
+        self.action_space = self.action_strategy.get_action_space()
 
         # Observation space (will be built after first data load)
         self.observation_space = None
@@ -273,19 +279,17 @@ class TradingEnv(gym.Env):
 
         return observation, info
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+    def step(self, action: Any) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """
         Execute one step in the environment.
 
         Args:
-            action: Action to take (0=HOLD, 1=BUY, 2=SELL)
+            action: Action to take (format depends on action_strategy)
 
         Returns:
             Tuple of (observation, reward, terminated, truncated, info)
         """
-        # Validate action
-        if action not in [0, 1, 2]:
-            raise ValueError(f"Invalid action: {action}. Must be 0 (HOLD), 1 (BUY), or 2 (SELL)")
+        # Action validation is delegated to action_strategy.execute_action()
 
         # Check if we reached episode end
         if self.current_candle_idx >= self.episode_end_idx:
@@ -339,48 +343,23 @@ class TradingEnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
-    def _execute_action(self, action: int) -> None:
-        """Execute the trading action."""
-        if action == 0:
-            # HOLD - do nothing
-            return
+    def _execute_action(self, action: Any) -> None:
+        """
+        Execute the trading action using the configured action strategy.
 
-        elif action == 1:
-            # BUY
-            try:
-                self.simulator.place_order(
-                    order_type=OrderType.MARKET,
-                    side=OrderSide.BUY,
-                    quantity=self.trade_quantity,
-                )
-            except RuntimeError:
-                # Insufficient balance or other error - skip
-                pass
+        Args:
+            action: Action from the agent (format depends on action_strategy)
+        """
+        # Build environment state for action strategy
+        env_state = {
+            "simulator_state": self.simulator.get_state(),
+            "current_candle": self.historical_candles[self.current_candle_idx - 1] if self.current_candle_idx > 0 else None,
+            "trade_quantity": self.trade_quantity,
+            "asset_view": self.asset_view,
+        }
 
-        elif action == 2:
-            # SELL
-            position = self.simulator.get_position()
-
-            if position.is_long:
-                # Close long position
-                try:
-                    self.simulator.place_order(
-                        order_type=OrderType.MARKET,
-                        side=OrderSide.SELL,
-                        quantity=min(position.quantity, self.trade_quantity),
-                    )
-                except RuntimeError:
-                    pass
-            elif position.is_flat:
-                # Open short position
-                try:
-                    self.simulator.place_order(
-                        order_type=OrderType.MARKET,
-                        side=OrderSide.SELL,
-                        quantity=self.trade_quantity,
-                    )
-                except RuntimeError:
-                    pass
+        # Delegate action execution to action strategy
+        self.action_strategy.execute_action(action, self.simulator, env_state)
 
     def _calculate_required_prefill_candles(self) -> int:
         """

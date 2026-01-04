@@ -8,6 +8,12 @@ from .reward_strategy import (
     SharpeRatioReward,
     RiskAdjustedReward,
 )
+from .action_strategy import (
+    ActionStrategy,
+    SimpleActionStrategy,
+    ExtendedActionStrategy,
+    ContinuousActionStrategy,
+)
 from .observation_builder import ObservationBuilder
 from .enums import DataMode
 
@@ -20,6 +26,10 @@ __all__ = [
     "RealizedPnLReward",
     "SharpeRatioReward",
     "RiskAdjustedReward",
+    "ActionStrategy",
+    "SimpleActionStrategy",
+    "ExtendedActionStrategy",
+    "ContinuousActionStrategy",
     "ObservationBuilder",
     "DataMode",
 ]
