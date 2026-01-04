@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-rl-environment"
+version = "0.1.0"
+description = "Reinforcement Learning environment for trading using trading-frame, trading-asset-view, and trading-simulator"
+authors = [
+    {name = "Morgiver"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+dependencies = [
+    "trading-frame @ git+https://github.com/Morgiver/trading-frame.git",
+    "trading-asset-view @ git+https://github.com/Morgiver/trading-asset-view.git",
+    "trading-simulator @ git+https://github.com/Morgiver/trading-simulator.git",
+    "gymnasium>=1.0.0",
+    "numpy>=1.20.0",
+    "pandas>=1.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "mypy>=0.991",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=trading_rl_environment"
