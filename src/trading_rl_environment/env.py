@@ -25,7 +25,7 @@ class TradingEnv(gym.Env):
     realistic multi-timeframe trading simulation.
     """
 
-    metadata = {"render_modes": []}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(
         self,
@@ -785,9 +785,94 @@ class TradingEnv(gym.Env):
             "asset_view_stats": self.asset_view.get_statistics(),
         }
 
-    def render(self) -> None:
-        """Render environment (not implemented)."""
-        pass
+    def render(self, mode: str = "human") -> None:
+        """
+        Render environment in debug mode.
+
+        Args:
+            mode: Render mode ("human" for console output)
+        """
+        if mode != "human":
+            return
+
+        # Get current state
+        pnl = self.simulator.get_pnl()
+        position = self.simulator.get_position()
+        orders = self.simulator.get_pending_orders()
+
+        # Prepare display
+        print("\n" + "="*80)
+        print(f"TRADING ENVIRONMENT - Episode {self.episode_count} | Step {self.current_candle_idx - self.episode_start_idx}")
+        print("="*80)
+
+        # Current candle info
+        if self.current_candle_idx > 0 and self.current_candle_idx <= len(self.historical_candles):
+            candle = self.historical_candles[self.current_candle_idx - 1]
+            print(f"\nCurrent Candle: {candle.date}")
+            print(f"  OHLC: O={candle.open_price:.2f} | H={candle.high_price:.2f} | L={candle.low_price:.2f} | C={candle.close_price:.2f}")
+            print(f"  Volume: {candle.volume:.2f}")
+
+        # Account state
+        equity = self.simulator.balance + pnl["net"]
+        print(f"\nAccount:")
+        print(f"  Balance: ${self.simulator.balance:,.2f}")
+        print(f"  Equity: ${equity:,.2f}")
+        print(f"  PnL (Net): ${pnl['net']:,.2f} ({(pnl['net']/self.initial_balance)*100:.2f}%)")
+        print(f"  PnL (Realized): ${pnl['realized']:,.2f}")
+        print(f"  PnL (Unrealized): ${pnl['unrealized']:,.2f}")
+        print(f"  Fees Paid: ${pnl['fees']:,.2f}")
+
+        # Position state
+        print(f"\nPosition:")
+        if position.is_flat:
+            print(f"  Status: FLAT (no position)")
+        elif position.is_long:
+            print(f"  Status: LONG")
+            print(f"  Quantity: {position.quantity:.4f}")
+            print(f"  Avg Price: ${position.average_price:.2f}")
+            print(f"  Current Price: ${self.simulator.last_price:.2f}")
+            unrealized = (self.simulator.last_price - position.average_price) * position.quantity
+            print(f"  Unrealized PnL: ${unrealized:,.2f}")
+        elif position.is_short:
+            print(f"  Status: SHORT")
+            print(f"  Quantity: {abs(position.quantity):.4f}")
+            print(f"  Avg Price: ${position.average_price:.2f}")
+            print(f"  Current Price: ${self.simulator.last_price:.2f}")
+            unrealized = (position.average_price - self.simulator.last_price) * abs(position.quantity)
+            print(f"  Unrealized PnL: ${unrealized:,.2f}")
+
+        # Active orders
+        print(f"\nActive Orders: {len(orders)}")
+        if orders:
+            for order in orders:
+                side_str = "BUY" if order.side.name == "BUY" else "SELL"
+                type_str = order.order_type.name
+                print(f"  [{order.order_id}] {side_str} {order.quantity:.4f} @ {type_str}", end="")
+                if hasattr(order, 'price') and order.price:
+                    print(f" ${order.price:.2f}", end="")
+                if hasattr(order, 'trigger_price') and order.trigger_price:
+                    print(f" (trigger: ${order.trigger_price:.2f})", end="")
+                print(f" - Status: {order.status.name}")
+
+        # Progress info
+        remaining_steps = self.episode_end_idx - self.current_candle_idx
+        print(f"\nEpisode Progress:")
+        print(f"  Current Index: {self.current_candle_idx}/{self.episode_end_idx}")
+        print(f"  Remaining Steps: {remaining_steps}")
+        print(f"  Data Mode: {self.data_mode.name}")
+
+        # Action strategy info
+        action_space_type = type(self.action_space).__name__
+        print(f"\nAction Strategy: {type(self.action_strategy).__name__}")
+        print(f"  Action Space: {action_space_type}", end="")
+        if hasattr(self.action_space, 'n'):
+            print(f"({self.action_space.n})")
+        elif hasattr(self.action_space, 'shape'):
+            print(f"{self.action_space.shape}")
+        else:
+            print()
+
+        print("="*80 + "\n")
 
     def close(self) -> None:
         """Clean up resources."""
