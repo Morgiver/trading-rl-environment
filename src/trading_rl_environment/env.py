@@ -805,6 +805,66 @@ class TradingEnv(gym.Env):
         print(f"TRADING ENVIRONMENT - Episode {self.episode_count} | Step {self.current_candle_idx - self.episode_start_idx}")
         print("="*80)
 
+        # Last 5 candles vertical chart
+        if self.current_candle_idx > 0:
+            print("\nLast 5 Candles:")
+            start_idx = max(0, self.current_candle_idx - 5)
+            end_idx = self.current_candle_idx
+            candles_to_show = self.historical_candles[start_idx:end_idx]
+
+            if candles_to_show:
+                # Find price range for scaling
+                all_prices = []
+                for c in candles_to_show:
+                    all_prices.extend([c.high_price, c.low_price])
+                max_price = max(all_prices)
+                min_price = min(all_prices)
+                price_range = max_price - min_price if max_price != min_price else 1
+
+                # Chart height (in lines)
+                chart_height = 15
+
+                # Build vertical chart
+                for line_idx in range(chart_height):
+                    # Calculate price level for this line (from top to bottom)
+                    price_level = max_price - (line_idx / (chart_height - 1)) * price_range
+
+                    # Price label on left
+                    print(f"  {price_level:8.2f} |", end="")
+
+                    # Draw each candle
+                    for candle in candles_to_show:
+                        # Determine candle direction
+                        is_bullish = candle.close_price >= candle.open_price
+                        body_top = max(candle.open_price, candle.close_price)
+                        body_bottom = min(candle.open_price, candle.close_price)
+
+                        # Draw wick/body based on price level
+                        if price_level > candle.high_price or price_level < candle.low_price:
+                            print("      ", end="")  # Outside candle range
+                        elif price_level > body_top and price_level <= candle.high_price:
+                            print("  |   ", end="")  # Upper wick
+                        elif price_level < body_bottom and price_level >= candle.low_price:
+                            print("  |   ", end="")  # Lower wick
+                        elif body_bottom <= price_level <= body_top:
+                            # Body
+                            if is_bullish:
+                                print("  ### ", end="")  # Bullish body (dark)
+                            else:
+                                print("  ... ", end="")  # Bearish body (light)
+                        else:
+                            print("      ", end="")
+
+                    print()  # New line
+
+                # Print time labels
+                print("           " + "-" * (len(candles_to_show) * 6))
+                print("           ", end="")
+                for candle in candles_to_show:
+                    time_str = candle.date.strftime("%H:%M")
+                    print(f"{time_str} ", end="")
+                print()
+
         # Current candle info
         if self.current_candle_idx > 0 and self.current_candle_idx <= len(self.historical_candles):
             candle = self.historical_candles[self.current_candle_idx - 1]
